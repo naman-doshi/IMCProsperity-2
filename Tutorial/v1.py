@@ -1,14 +1,93 @@
-from typing import Dict, List
-from datamodel import *
+import json
+from datamodel import Listing, Observation, Order, OrderDepth, ProsperityEncoder, Symbol, Trade, TradingState
+from typing import Any
 import collections
-from collections import defaultdict
-import random
-import math
-import copy
-import numpy as np
+
+class Logger:
+    def __init__(self) -> None:
+        self.logs = ""
+
+    def print(self, *objects: Any, sep: str = " ", end: str = "\n") -> None:
+        self.logs += sep.join(map(str, objects)) + end
+
+    def flush(self, state: TradingState, orders: dict[Symbol, list[Order]], conversions: int, trader_data: str) -> None:
+        print(json.dumps([
+            self.compress_state(state),
+            self.compress_orders(orders),
+            conversions,
+            trader_data,
+            self.logs,
+        ], cls=ProsperityEncoder, separators=(",", ":")))
+
+        self.logs = ""
+
+    def compress_state(self, state: TradingState) -> list[Any]:
+        return [
+            state.timestamp,
+            state.traderData,
+            self.compress_listings(state.listings),
+            self.compress_order_depths(state.order_depths),
+            self.compress_trades(state.own_trades),
+            self.compress_trades(state.market_trades),
+            state.position,
+            self.compress_observations(state.observations),
+        ]
+
+    def compress_listings(self, listings: dict[Symbol, Listing]) -> list[list[Any]]:
+        compressed = []
+        for listing in listings.values():
+            compressed.append([listing["symbol"], listing["product"], listing["denomination"]])
+
+        return compressed
+
+    def compress_order_depths(self, order_depths: dict[Symbol, OrderDepth]) -> dict[Symbol, list[Any]]:
+        compressed = {}
+        for symbol, order_depth in order_depths.items():
+            compressed[symbol] = [order_depth.buy_orders, order_depth.sell_orders]
+
+        return compressed
+
+    def compress_trades(self, trades: dict[Symbol, list[Trade]]) -> list[list[Any]]:
+        compressed = []
+        for arr in trades.values():
+            for trade in arr:
+                compressed.append([
+                    trade.symbol,
+                    trade.price,
+                    trade.quantity,
+                    trade.buyer,
+                    trade.seller,
+                    trade.timestamp,
+                ])
+
+        return compressed
+
+    def compress_observations(self, observations: Observation) -> list[Any]:
+        conversion_observations = {}
+        for product, observation in observations.conversionObservations.items():
+            conversion_observations[product] = [
+                observation.bidPrice,
+                observation.askPrice,
+                observation.transportFees,
+                observation.exportTariff,
+                observation.importTariff,
+                observation.sunlight,
+                observation.humidity,
+            ]
+
+        return [observations.plainValueObservations, conversion_observations]
+
+    def compress_orders(self, orders: dict[Symbol, list[Order]]) -> list[list[Any]]:
+        compressed = []
+        for arr in orders.values():
+            for order in arr:
+                compressed.append([order.symbol, order.price, order.quantity])
+
+        return compressed
+
+logger = Logger()
 
 class Trader:
-
     curOrders = {}
     POSITION_LIMIT = {'AMETHYSTS': 20, 'STARFRUIT': 20}
     bananaLim = 0
@@ -94,7 +173,7 @@ class Trader:
         order_depth: OrderDepth = state.order_depths.get(product, 0)
 
         if order_depth == 0:
-            print("Order book does not contain {}. PearlStrat strategy exiting".format(product))
+            logger.print("Order book does not contain {}. PearlStrat strategy exiting".format(product))
             return
         myPosition = state.position.get(product, 0)
         sells = order_depth.sell_orders # asks
@@ -118,7 +197,7 @@ class Trader:
 
         theo = (rb+rs)/(vb+vs) #dynamic theo value
 
-        print("Theo for banana before adjusting is {}".format(theo))
+        logger.print("Theo for banana before adjusting is {}".format(theo))
         if self.bananaPrevP:
             bChange = theo-self.bananaPrevP
         else:
@@ -131,7 +210,7 @@ class Trader:
         theo -= 0.05*myPosition-0.15*bChange
 
 
-        print("Theo for banana after adjusting is {}".format(theo))
+        logger.print("Theo for banana after adjusting is {}".format(theo))
 
         if best_bid >= theo:
             for p in buyPrices[::-1]:
@@ -140,7 +219,7 @@ class Trader:
                     break
                 sell_q = min(buys[p], limit + myPosition)
                 if sell_q:
-                    print("*******Selling {} for price: {} and quantity: {}".format(product, p, sell_q))
+                    logger.print("*******Selling {} for price: {} and quantity: {}".format(product, p, sell_q))
                     orders.append(Order(product, p, -sell_q))
                     myPosition -= sell_q
                 if myPosition <= -limit:
@@ -161,7 +240,7 @@ class Trader:
                     break
                 buy_q = min(-sells[p], limit - myPosition)
                 if buy_q:
-                    print("*******Buying {} for price: {} and quantity: {}".format(product, p, buy_q))
+                    logger.print("*******Buying {} for price: {} and quantity: {}".format(product, p, buy_q))
                     orders.append(Order(product, p, buy_q))
                     myPosition += buy_q
                 if myPosition >= limit:
@@ -176,7 +255,7 @@ class Trader:
 
         elif best_bid < theo and best_ask > theo and best_bid != -1 and best_ask != -1:
             # money making portion
-            print("Potential buy or sell submitted.")
+            logger.print("Potential buy or sell submitted.")
 
             qbuy = limit-myPosition
             qsell = limit+myPosition
@@ -199,23 +278,15 @@ class Trader:
             self.curOrders[product] = orders
         return
     
-    def run(self, state: TradingState):
-        print("traderData: " + state.traderData)
-        print("Observations: " + str(state.observations))
+    def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
+        orders = {}
+        conversions = 0
+        trader_data = ""
 
-        # self.staticMM(state, 'AMETHYSTS', 10000)
         self.staticMM(state, 'AMETHYSTS')
         self.MAMM(state, 20, 'STARFRUIT')
 
+        orders = self.curOrders
 
-        # self.MAMM(state, 20, 'STARFRUIT')
-
-				# Orders to be placed on exchange matching engine
-        result = {}
-
-
-        traderData = "SAMPLE" 
-        
-				# Sample conversion request. Check more details below. 
-        conversions = 1
-        return self.curOrders, conversions, traderData
+        logger.flush(state, orders, conversions, trader_data)
+        return orders, conversions, trader_data
