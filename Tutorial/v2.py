@@ -90,8 +90,8 @@ logger = Logger()
 class Trader:
     curOrders = {}
     POSITION_LIMIT = {'AMETHYSTS': 20, 'STARFRUIT': 20}
-    bananaLim = 0
-    bananaPrevP = None
+    bananas_dim = 4
+    bananas_cache = []
     
     def staticMM(self, state, product, theo=10000):
         # theo is the theoretical price of pearls
@@ -166,117 +166,87 @@ class Trader:
                     orders.append(Order(product, best_bid+1, -myPosition))
         self.curOrders[product] = orders
         return
+
     
-    def MAMM(self, state, limit=20, product='STARFRUIT'):
+    def calc_next_price_bananas(self):
+        # bananas cache stores price from 1 day ago, current day resp
+        # by price, here we mean mid price
 
+        coef = [-0.01869561,  0.0455032 ,  0.16316049,  0.8090892]
+        intercept = 4.481696494462085
+        nxt_price = intercept
+        for i, val in enumerate(self.bananas_cache):
+            nxt_price += val * coef[i]
+
+        return int(round(nxt_price))
+    
+    def values_extract(self, order_dict, buy=0):
+        tot_vol = 0
+        best_val = -1
+        mxvol = -1
+
+        for ask, vol in order_dict.items():
+            if(buy==0):
+                vol *= -1
+            tot_vol += vol
+            if tot_vol > mxvol:
+                mxvol = vol
+                best_val = ask
+        
+        return tot_vol, best_val
+    
+    def compute_orders_regression(self, state, product, acc_bid, acc_ask, LIMIT):
         orders: list[Order] = []
-        order_depth: OrderDepth = state.order_depths.get(product, 0)
+        order_depth = state.order_depths.get(product, 0)
 
-        if order_depth == 0:
-            logger.print("Order book does not contain {}. PearlStrat strategy exiting".format(product))
-            return
-        myPosition = state.position.get(product, 0)
-        sells = order_depth.sell_orders # asks
-        buys = order_depth.buy_orders # bids
-        sellPrices = sorted(list(sells.keys()))
-        buyPrices = sorted(list(buys.keys()))
-        best_ask = sellPrices[0] if sellPrices else -1
-        best_bid = buyPrices[-1] if buyPrices else -1
+        osell = collections.OrderedDict(sorted(order_depth.sell_orders.items()))
+        obuy = collections.OrderedDict(sorted(order_depth.buy_orders.items(), reverse=True))
 
-        def tosum(D):
-            # return the sum of the dot product of key value pairs in dictionary, and the sum of the values
-            res, val = 0,0
-            for x in D.keys():
-                res += D[x]*x
-                val += D[x]
-            return res, val
+        sell_vol, best_sell_pr = self.values_extract(osell)
+        buy_vol, best_buy_pr = self.values_extract(obuy, 1)
 
-        rb, vb = tosum(buys)
-        rs, vs = tosum(sells)
-        rs, vs = -rs, -vs
+        cpos = state.position.get(product, 0)
+        po2 = cpos
 
-        theo = (rb+rs)/(vb+vs) #dynamic theo value
+        for ask, vol in osell.items():
+            if ((ask <= acc_bid) or ((po2<0) and (ask == acc_bid+1))) and cpos < LIMIT:
+                order_for = min(-vol, LIMIT - cpos)
+                cpos += order_for
+                assert(order_for >= 0)
+                orders.append(Order(product, ask, order_for))
 
-        logger.print("Theo for banana before adjusting is {}".format(theo))
-        if self.bananaPrevP:
-            bChange = theo-self.bananaPrevP
-        else:
-            bChange = 0
-        self.bananaPrevP = theo
+        undercut_buy = best_buy_pr + 1
+        undercut_sell = best_sell_pr - 1
 
-        bb_q = buys[best_bid]
-        ba_q = -sells[best_ask]
+        bid_pr = min(undercut_buy, acc_bid) # we will shift this by 1 to beat this price
+        sell_pr = max(undercut_sell, acc_ask)
 
-        theo -= 0.05*myPosition-0.15*bChange
+        if cpos < LIMIT:
+            num = LIMIT - cpos
+            orders.append(Order(product, bid_pr, num))
+            cpos += num
+        
+        cpos = po2
+        
 
+        for bid, vol in obuy.items():
+            if ((bid >= acc_ask) or ((po2>0) and (bid+1 == acc_ask))) and cpos > -LIMIT:
+                order_for = max(-vol, -LIMIT-cpos)
+                # order_for is a negative number denoting how much we will sell
+                cpos += order_for
+                assert(order_for <= 0)
+                orders.append(Order(product, bid, order_for))
 
-        logger.print("Theo for banana after adjusting is {}".format(theo))
+        if cpos > -LIMIT:
+            num = -LIMIT-cpos
+            orders.append(Order(product, sell_pr, num))
+            cpos += num
+        
+        logger.print(orders)
 
-        if best_bid >= theo:
-            for p in buyPrices[::-1]:
-                # sell as much as possible above theo price
-                if p < theo:
-                    break
-                sell_q = min(buys[p], limit + myPosition)
-                if sell_q:
-                    logger.print("*******Selling {} for price: {} and quantity: {}".format(product, p, sell_q))
-                    orders.append(Order(product, p, -sell_q))
-                    myPosition -= sell_q
-                if myPosition <= -limit:
-                    self.bananaLim += 1
-                    break
-
-            p = best_bid+1
-            if p != best_ask and myPosition > -limit:
-                orders.append(Order(product, p, -limit-myPosition)) #keep probing
-
-
-
-
-        elif best_ask <= theo:
-            for p in sellPrices:
-                # buy as much as possible below theo price
-                if p > theo:
-                    break
-                buy_q = min(-sells[p], limit - myPosition)
-                if buy_q:
-                    logger.print("*******Buying {} for price: {} and quantity: {}".format(product, p, buy_q))
-                    orders.append(Order(product, p, buy_q))
-                    myPosition += buy_q
-                if myPosition >= limit:
-                    self.bananaLim += 1
-                    break
-
-            p = best_ask-1
-            if p != best_bid and myPosition < limit:
-                orders.append(Order(product, p, limit-myPosition))
-
-
-
-        elif best_bid < theo and best_ask > theo and best_bid != -1 and best_ask != -1:
-            # money making portion
-            logger.print("Potential buy or sell submitted.")
-
-            qbuy = limit-myPosition
-            qsell = limit+myPosition
-            d_bid = theo-best_bid
-            d_ask = best_ask-theo
-
-            if best_bid + 1 != best_ask - 1:
-                orders.append(Order(product, best_bid+1, qbuy))
-                if qbuy == 0:
-                    self.bananaLim+=1
-                orders.append(Order(product, best_ask-1, -qsell))
-                if qsell==0:
-                    self.bananaLim+=1
-            else:
-                if myPosition>0:
-                    orders.append(Order(product, best_ask-1, -myPosition))
-                elif myPosition<0:
-                    orders.append(Order(product, best_bid+1, -myPosition))
-        if orders:
-            self.curOrders[product] = orders
-        return
+        self.curOrders[product] = orders
+    
+    
     
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         orders = {}
@@ -284,7 +254,27 @@ class Trader:
         trader_data = ""
 
         self.staticMM(state, 'AMETHYSTS')
-        self.MAMM(state, 20, 'STARFRUIT')
+
+        if len(self.bananas_cache) == self.bananas_dim:
+            self.bananas_cache.pop(0)
+
+        _, bs_bananas = self.values_extract(collections.OrderedDict(sorted(state.order_depths['STARFRUIT'].sell_orders.items())))
+        _, bb_bananas = self.values_extract(collections.OrderedDict(sorted(state.order_depths['STARFRUIT'].buy_orders.items(), reverse=True)), 1)
+
+        self.bananas_cache.append((bs_bananas+bb_bananas)/2)
+
+        INF = 1e9
+
+        bananas_lb = -INF
+        bananas_ub = INF
+
+        if len(self.bananas_cache) == self.bananas_dim:
+            bananas_lb = self.calc_next_price_bananas()-1
+            bananas_ub = self.calc_next_price_bananas()+1
+
+        logger.print(bananas_lb, bananas_ub)
+        
+        self.compute_orders_regression(state, 'STARFRUIT', bananas_lb, bananas_ub, 20)
 
         orders = self.curOrders
 
