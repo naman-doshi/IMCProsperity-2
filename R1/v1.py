@@ -114,6 +114,7 @@ class Trader:
     starfruit_dim = 4
     curOrders = {}
     starfruit_cache = []
+    INF = 1e9
     
     def staticMM(self, state, product, theo=10000):
         orders: list[Order] = []
@@ -129,7 +130,7 @@ class Trader:
         best_ask = sellPrices[0] if sellPrices else -1
         best_bid = buyPrices[-1] if buyPrices else -1
 
-        theo -= 0.07 * myPosition
+        theo -= 0.08 * myPosition
 
         if best_bid > theo:
             for p in buyPrices[::-1]:
@@ -175,7 +176,7 @@ class Trader:
     def calc_next_price_starfruit(self):
         # starfruit cache stores price from 1 day ago, current day resp
         # by price, here we mean mid price
-        coef = [-0.0186956,  0.0455032,  0.1631604,  0.809089]
+        coef = [-0.01869561,  0.0455032 ,  0.16316049,  0.8090892]
         intercept = 4.481696494462085
         nxt_price = intercept
         for i, val in enumerate(self.starfruit_cache):
@@ -211,7 +212,7 @@ class Trader:
         po2 = cpos
 
         for ask, vol in osell.items():
-            if ((ask <= acc_bid) or ((po2<0) and (ask == acc_bid+1))) and cpos < LIMIT:
+            if ((ask <= acc_bid) or ((po2<0) and (ask == acc_bid+1))) and cpos < LIMIT and abs(ask) != self.INF:
                 order_for = min(-vol, LIMIT - cpos)
                 cpos += order_for
                 assert(order_for >= 0)
@@ -223,7 +224,7 @@ class Trader:
         bid_pr = min(undercut_buy, acc_bid) # we will shift this by 1 to beat this price
         sell_pr = max(undercut_sell, acc_ask)
 
-        if cpos < LIMIT:
+        if cpos < LIMIT and abs(bid_pr) != self.INF:
             num = LIMIT - cpos
             orders.append(Order(product, bid_pr, num))
             cpos += num
@@ -231,13 +232,13 @@ class Trader:
         cpos = po2
     
         for bid, vol in obuy.items():
-            if ((bid >= acc_ask) or ((po2>0) and (bid+1 == acc_ask))) and cpos > -LIMIT:
+            if ((bid >= acc_ask) or ((po2>0) and (bid+1 == acc_ask))) and cpos > -LIMIT and abs(bid) != self.INF:
                 order_for = max(-vol, -LIMIT-cpos)
                 cpos += order_for
                 assert(order_for <= 0)
                 orders.append(Order(product, bid, order_for))
 
-        if cpos > -LIMIT:
+        if cpos > -LIMIT and abs(sell_pr) != self.INF:
             num = -LIMIT-cpos
             orders.append(Order(product, sell_pr, num))
             cpos += num
@@ -256,10 +257,8 @@ class Trader:
 
         self.starfruit_cache.append((bs_starfruit+bb_starfruit)/2)
 
-        INF = 1e9
-
-        starfruit_lb = -INF
-        starfruit_ub = INF
+        starfruit_lb = -self.INF
+        starfruit_ub = self.INF
 
         if len(self.starfruit_cache) == self.starfruit_dim:
             starfruit_lb = self.calc_next_price_starfruit() - 1
