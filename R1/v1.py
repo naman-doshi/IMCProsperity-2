@@ -131,6 +131,9 @@ class Trader:
         best_bid = buyPrices[-1] if buyPrices else -1
 
         theo -= 0.08 * myPosition
+        logger.print(buys)
+        logger.print(sells)
+        logger.print(f"Best bid: {best_bid}, Best ask: {best_ask}, Theo: {theo}")
 
         if best_bid > theo:
             for p in buyPrices[::-1]:
@@ -142,8 +145,9 @@ class Trader:
 
             p = best_bid+1
 
-            if p != best_ask and myPosition > -limit:
+            if p != best_ask and myPosition > -limit and p < theo:
                 orders.append(Order(product, p, -limit-myPosition)) # keep probing
+                myPosition -= limit + myPosition
 
         if best_ask < theo:
             for p in sellPrices:
@@ -154,8 +158,9 @@ class Trader:
                 myPosition += buy_q
 
             p = best_ask-1
-            if p != best_bid and myPosition < limit:
+            if p != best_bid and myPosition < limit and p > theo:
                 orders.append(Order(product, p, limit-myPosition))
+                myPosition += limit - myPosition
 
         if best_bid < theo and best_ask > theo and best_bid != -1 and best_ask != -1:
             qbuy = limit - myPosition
