@@ -162,15 +162,30 @@ class Trader:
         if best_bid < theo and best_ask > theo:
             qbuy = limit - myPosition
             qsell = limit + myPosition
-
             if best_bid + 1 < best_ask - 1:
                 orders.append(Order(product, best_bid+1, qbuy))
                 orders.append(Order(product, best_ask-1, -qsell))
-            else:
-                if myPosition>0:
-                    orders.append(Order(product, best_ask-1, -myPosition))
-                elif myPosition<0:
-                    orders.append(Order(product, best_bid+1, -myPosition))
+            elif best_bid + 1 == best_ask - 1:
+                if best_bid + 1 < theo:
+                    orders.append(Order(product, best_bid+1, qbuy))
+                elif best_ask - 1 > theo:
+                    orders.append(Order(product, best_ask-1, -qsell))
+        elif best_bid < theo and best_ask < theo:
+            qbuy = limit - myPosition
+            if best_bid + 1 < theo:
+                orders.append(Order(product, best_bid+1, qbuy))
+        elif best_bid > theo and best_ask > theo:
+            qsell = limit + myPosition
+            if best_ask - 1 > theo:
+                orders.append(Order(product, best_ask-1, -qsell))
+        elif best_bid == theo:
+            qsell = limit + myPosition
+            if best_ask - 1 > theo:
+                orders.append(Order(product, best_ask-1, -qsell))
+        elif best_ask == theo:
+            qbuy = limit - myPosition
+            if best_bid + 1 < theo:
+                orders.append(Order(product, best_bid+1, qbuy))
 
         self.curOrders[product] = orders
 
@@ -257,7 +272,7 @@ class Trader:
         _, bs_starfruit = self.values_extract(collections.OrderedDict(sorted(state.order_depths['STARFRUIT'].sell_orders.items())))
         _, bb_starfruit = self.values_extract(collections.OrderedDict(sorted(state.order_depths['STARFRUIT'].buy_orders.items(), reverse=True)), 1)
 
-        self.starfruit_cache.append((bs_starfruit+bb_starfruit)/2)
+        self.starfruit_cache.append((bs_starfruit+bb_starfruit)//2)
 
         starfruit_lb = -self.INF
         starfruit_ub = self.INF
@@ -272,13 +287,18 @@ class Trader:
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         orders = {}
         conversions = 0
-        trader_data = ""
+        
+        if state.timestamp != 0:
+            self.starfruit_cache = json.loads(json.loads(state.traderData)["starfruit_cache"])
 
         self.staticMM(state, 'AMETHYSTS')
         self.starfruitMM(state)
         logger.print(self.starfruit_cache)
 
         orders = self.curOrders
+        trader_data = json.dumps({
+            "starfruit_cache": json.dumps(self.starfruit_cache)
+        })
     
         logger.flush(state, orders, conversions, trader_data)
         return orders, conversions, trader_data
