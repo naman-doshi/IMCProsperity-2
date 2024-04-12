@@ -291,7 +291,7 @@ class Trader:
         if state.timestamp != 0:
             self.starfruit_cache = json.loads(json.loads(state.traderData)["starfruit_cache"])
 
-        self.staticMM(state, 'AMETHYSTS')
+        self.compute_orders_regression(state, 'AMETHYSTS', 9999, 10001, 20)
         self.starfruitMM(state)
         logger.print(self.starfruit_cache)
 
