@@ -57,19 +57,19 @@ print(np.corrcoef(df["mid_price"][4:], df["back"][4:])[0, 1])
 
 
 
-# import skopt
-# from skopt import gp_minimize
-# from skopt.space import Real
-# from skopt.utils import use_named_args
+import skopt
+from skopt import gp_minimize
+from skopt.space import Real
+from skopt.utils import use_named_args
 
-# space  = [Real(-1, 1, name='a'),
-#           Real(-1, 1, name='b'),
-#           Real(-1, 1, name='c'),
-#           Real(-1, 1, name='d'), 
-#           Real(-10, 10, name='intercept')]
-# @use_named_args(space)
-# def objective(a, b, c, d, intercept):
-#     return evaluate(a, b, c, d, intercept)
+space  = [Real(-1, 1, name='a'),
+          Real(-1, 1, name='b'),
+          Real(-1, 1, name='c'),
+          Real(-1, 1, name='d'), 
+          Real(-10, 10, name='intercept')]
+@use_named_args(space)
+def objective(a, b, c, d, intercept):
+    return evaluate(a, b, c, d, intercept)
 
 
 # res = gp_minimize(objective, space, verbose=True, x0 = [-0.01869561,  0.0455032 ,  0.16316049,  0.8090892, 4.481696494462085])
