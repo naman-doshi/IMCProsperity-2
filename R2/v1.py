@@ -114,6 +114,7 @@ class Trader:
     starfruit_dim = 4
     curOrders = {}
     starfruit_cache = []
+    orchids_cache = []
     INF = 1e9
     
     def calc_next_price_starfruit(self):
@@ -186,7 +187,6 @@ class Trader:
             orders.append(Order(product, sell_pr, num))
             cpos += num
         
-        logger.print(orders)
 
         self.curOrders[product] = orders
 
@@ -209,6 +209,55 @@ class Trader:
         
         self.compute_orders_regression(state, 'STARFRUIT', starfruit_lb, starfruit_ub, 20)
 
+    def orchidArbitrage(self, product, state):
+        conversion = state.observations.conversionObservations[product]
+        orders = []
+        conv = 0
+
+        # cover short sell
+        buyP = conversion.askPrice + conversion.transportFees + conversion.importTariff
+        # sell bought
+        sellR = conversion.bidPrice - conversion.transportFees - conversion.exportTariff
+
+        order_depths = state.order_depths.get(product, 0)
+        osell = collections.OrderedDict(sorted(order_depths.sell_orders.items()))
+        obuy = collections.OrderedDict(sorted(order_depths.buy_orders.items(), reverse=True))
+
+        # fill all buy orders above buyP
+        bf = 0
+        pos = state.position.get('ORCHIDS', 0)
+        for buy, vol in obuy.items():
+            if buy > buyP:
+                order_for = min(-vol, -100-pos)
+                pos += order_for
+                orders.append(Order(product, buy, order_for))
+                bf += 1
+        
+        # fill all sell orders below sellR
+        sf = 0
+        for sell, vol in osell.items():
+            if sell < sellR:
+                order_for = min(vol, 100+pos)
+                pos -= order_for
+                orders.append(Order(product, sell, order_for))
+                sf += 1
+
+        # undercut lowest unfilled sell order
+        price, vol = list(osell.items())[sf]
+        if price - 1 > buyP:
+            orders.append(Order(product, price-1, -100-pos))
+        
+        # undercut highest unfilled buy order
+        price, vol = list(obuy.items())[bf]
+        if price + 1 < sellR:
+            orders.append(Order(product, price+1, 100+pos))
+
+        self.curOrders[product] = orders
+
+        conv = -state.position.get(product, 0)
+
+        return conv
+
 
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         orders = {}
@@ -216,14 +265,16 @@ class Trader:
         
         if state.timestamp != 0:
             self.starfruit_cache = json.loads(json.loads(state.traderData)["starfruit_cache"])
+            # self.orchids_cache = json.loads(json.loads(state.traderData)["orchids_cache"])
 
         self.compute_orders_regression(state, 'AMETHYSTS', 9999, 10001, 20)
         self.starfruitMM(state)
-        logger.print(self.starfruit_cache)
+        conversions = self.orchidArbitrage('ORCHIDS', state)
 
         orders = self.curOrders
         trader_data = json.dumps({
-            "starfruit_cache": json.dumps(self.starfruit_cache)
+            "starfruit_cache": json.dumps(self.starfruit_cache),
+            # "orchids_cache": json.dumps(self.orchids_cache)
         })
     
         logger.flush(state, orders, conversions, trader_data)
