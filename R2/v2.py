@@ -2,6 +2,7 @@ import json
 from datamodel import Listing, Observation, Order, OrderDepth, ProsperityEncoder, Symbol, Trade, TradingState
 from typing import Any
 import collections
+import pandas as pd
 
 class Logger:
     def __init__(self) -> None:
@@ -115,6 +116,7 @@ class Trader:
     curOrders = {}
     starfruit_cache = []
     orchids_cache = []
+    orchid_ma_differential = 0
     INF = 1e9
     
     def calc_next_price_starfruit(self):
@@ -209,6 +211,19 @@ class Trader:
         
         self.compute_orders_regression(state, 'STARFRUIT', starfruit_lb, starfruit_ub, 20)
 
+    def updateOrchidCache(self, state):
+
+        buy = state.observations.conversionObservations['ORCHIDS'].bidPrice
+        sell = state.observations.conversionObservations['ORCHIDS'].askPrice
+        mid = (buy + sell) / 2
+
+        self.orchids_cache.append(mid)
+
+        df = pd.DataFrame(self.orchids_cache, columns=['mid'])
+        df['madiff'] = df['mid'].diff()
+        self.orchid_ma_differential = df['madiff'][len(df)-1]
+
+
     def orchidArbitrage(self, product, state):
         conversion = state.observations.conversionObservations[product]
         orders = []
@@ -220,34 +235,46 @@ class Trader:
         sellR = conversion.bidPrice - conversion.transportFees - conversion.exportTariff
 
         logger.print(buyP, sellR)
+        logger.print(self.orchid_ma_differential)
 
         order_depths = state.order_depths.get(product, 0)
         osell = collections.OrderedDict(sorted(order_depths.sell_orders.items()))
         obuy = collections.OrderedDict(sorted(order_depths.buy_orders.items(), reverse=True))
 
-        # fill all buy orders above buyP
-        bf = 0
-        pos = state.position.get('ORCHIDS', 0)
-        for buy, vol in obuy.items():
-            if buy > buyP:
-                order_for = -100-pos
-                pos += order_for
-                orders.append(Order(product, buy, order_for))
-                bf += 1
-        
+        pos = 0
+
         # fill all sell orders below sellR
         sf = 0
-        for sell, vol in osell.items():
-            if sell < sellR:
-                order_for = 100-pos
-                pos -= order_for
-                orders.append(Order(product, sell, order_for))
-                sf += 1
+        if self.orchid_ma_differential >= -2:
+            for sell, vol in osell.items():
+                if sell < sellR and pos < 100:
+                    order_for = min(-vol, 100-pos)
+                    pos += order_for
+                    orders.append(Order(product, sell, order_for))
+                    sf += 1
+
+            if pos < 100:
+                orders.append(Order(product, int(sellR-1), 100-pos))
+
+        # fill all buy orders above buyP
+        bf = 0
+
+        if self.orchid_ma_differential <= 2:
+            for buy, vol in obuy.items():
+                if buy > buyP and pos > -100:
+                    order_for = max(-vol, -100-pos)
+                    pos += order_for
+                    orders.append(Order(product, buy, order_for))
+                    bf += 1
+
+            bprice = list(obuy.keys())[0]
+
+            if pos > -100:
+                amt = 100+pos
+                spread = conversion.askPrice - bprice
+                if spread > 0:
+                    orders.append(Order(product, round(bprice + (spread / 2)), -amt))
         
-        orders.append(Order(product, int(buyP+1)+1, -100-pos))
-        orders.append(Order(product, int(sellR-1), 100-pos))
-
-
         self.curOrders[product] = orders
 
         conv = -state.position.get(product, 0)
@@ -261,16 +288,17 @@ class Trader:
         
         if state.timestamp != 0:
             self.starfruit_cache = json.loads(json.loads(state.traderData)["starfruit_cache"])
-            # self.orchids_cache = json.loads(json.loads(state.traderData)["orchids_cache"])
+            self.orchids_cache = json.loads(json.loads(state.traderData)["orchids_cache"])
 
         self.compute_orders_regression(state, 'AMETHYSTS', 9999, 10001, 20)
         self.starfruitMM(state)
+        self.updateOrchidCache(state)
         conversions = self.orchidArbitrage('ORCHIDS', state)
 
         orders = self.curOrders
         trader_data = json.dumps({
             "starfruit_cache": json.dumps(self.starfruit_cache),
-            # "orchids_cache": json.dumps(self.orchids_cache)
+            "orchids_cache": json.dumps(self.orchids_cache)
         })
     
         logger.flush(state, orders, conversions, trader_data)
