@@ -273,7 +273,7 @@ class Trader:
                 amt = 100+pos
                 spread = conversion.askPrice - bprice
                 if spread > 0:
-                    orders.append(Order(product, round(bprice + (spread / 2)), -amt))
+                    orders.append(Order(product, int(buyP+1)+1, -amt))
         
         self.curOrders[product] = orders
 
