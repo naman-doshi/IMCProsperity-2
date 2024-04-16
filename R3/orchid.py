@@ -3,6 +3,7 @@ from datamodel import Listing, Observation, Order, OrderDepth, ProsperityEncoder
 from typing import Any
 import collections
 import pandas as pd
+import math
 
 class Logger:
     def __init__(self) -> None:
@@ -198,7 +199,7 @@ class Trader:
             if pos > -100:
                 amt = 100+pos
                 orders.append(Order(product, max(bprice+2, int(buyP+1)), -amt))
-        
+            
         self.curOrders[product] = orders
 
         conv = -state.position.get(product, 0)
