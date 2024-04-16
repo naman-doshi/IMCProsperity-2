@@ -119,7 +119,7 @@ class Trader:
     cont_buy_basket_unfill = 0
     cont_sell_basket_unfill = 0
     std = 25
-    basket_std = 117
+    basket_std = 55
     orders = {}
     position = copy.deepcopy(empty_dict)
 
@@ -153,7 +153,7 @@ class Trader:
         res_buy = mid_price['GIFT_BASKET'] - mid_price['STRAWBERRIES']*6 - mid_price['CHOCOLATE']*4 - mid_price['ROSES'] - 379
         res_sell = res_buy
 
-        trade_at = self.basket_std*0.5
+        trade_at = self.basket_std
         close_at = self.basket_std*(-1000)
 
         pb_pos = self.position['GIFT_BASKET']
