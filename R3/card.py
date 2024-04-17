@@ -118,8 +118,11 @@ class Trader:
     POSITION_LIMIT = {'AMETHYSTS': 20, 'STARFRUIT': 20, 'ORCHIDS': 100, 'CHOCOLATE':240, 'STRAWBERRIES':300, 'ROSES':60, 'GIFT_BASKET':60}
     std_threshold = 55
     orders = {}
+    bt, st = -1, -1
 
     def compute_orders_basket(self, state):
+
+        delay_threshold = 0
 
         order_depth = state.order_depths
         orders = {'STRAWBERRIES' : [], 'CHOCOLATE': [], 'ROSES' : [], 'GIFT_BASKET' : []}
@@ -143,11 +146,15 @@ class Trader:
 
         trade_at = self.std_threshold
 
+
         if res_sell > trade_at:
             vol = state.position.get('GIFT_BASKET', 0) + self.POSITION_LIMIT['GIFT_BASKET']
             orders['GIFT_BASKET'].append(Order('GIFT_BASKET', worst_buy['GIFT_BASKET'], -vol)) 
             # vol = state.position.get('CHOCOLATE', 0) + self.POSITION_LIMIT['CHOCOLATE']
             # orders['CHOCOLATE'].append(Order('CHOCOLATE', worst_buy['CHOCOLATE'], -vol))
+            self.st = state.timestamp + delay_threshold * 100
+        
+        if state.timestamp == self.st:
             for prod in ['STRAWBERRIES', 'CHOCOLATE', 'ROSES']:
                 vol = self.POSITION_LIMIT[prod] + state.position.get(prod, 0)
                 orders[prod].append(Order(prod, worst_buy[prod], -vol))
@@ -158,6 +165,9 @@ class Trader:
             orders['GIFT_BASKET'].append(Order('GIFT_BASKET', worst_sell['GIFT_BASKET'], vol))
             # vol = self.POSITION_LIMIT['CHOCOLATE'] - state.position.get('CHOCOLATE', 0)
             # orders['CHOCOLATE'].append(Order('CHOCOLATE', worst_sell['CHOCOLATE'], vol))
+            self.bt = state.timestamp + delay_threshold * 100
+            
+        if state.timestamp == self.bt: 
             for prod in ['STRAWBERRIES', 'CHOCOLATE', 'ROSES']:
                 vol = state.position.get(prod, 0) - self.POSITION_LIMIT[prod]
                 orders[prod].append(Order(prod, worst_sell[prod], -vol))
