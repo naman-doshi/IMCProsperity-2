@@ -180,8 +180,10 @@ class Trader:
                     orders.append(Order(product, sell, order_for))
                     sf += 1
 
+            sprice = list(osell.keys())[0]
+
             if pos < 100:
-                orders.append(Order(product, int(sellR-1), 100-pos))
+                orders.append(Order(product, min(sprice-2, int(sellR-1)), 100-pos))
 
         # fill all buy orders above buyP
         bf = 0
@@ -198,7 +200,7 @@ class Trader:
 
             if pos > -100:
                 amt = 100+pos
-                orders.append(Order(product, max(bprice+2, int(buyP+1)), -amt))
+                orders.append(Order(product, max(bprice+2, int(buyP+1)+1), -amt))
             
         self.curOrders[product] = orders
 
