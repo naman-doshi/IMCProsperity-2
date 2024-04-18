@@ -115,7 +115,7 @@ logger = Logger()
 
 class Trader:
 
-    POSITION_LIMIT = {'AMETHYSTS': 20, 'STARFRUIT': 20, 'ORCHIDS': 100, 'CHOCOLATE':240, 'STRAWBERRIES':300, 'ROSES':60, 'GIFT_BASKET':60}
+    POSITION_LIMIT = {'AMETHYSTS': 20, 'STARFRUIT': 20, 'ORCHIDS': 100, 'CHOCOLATE':250, 'STRAWBERRIES':350, 'ROSES':60, 'GIFT_BASKET':60}
     std_threshold = 55
     orders = {}
     bt, st = -1, -1
@@ -164,10 +164,10 @@ class Trader:
         obuy = collections.OrderedDict(sorted(depth.buy_orders.items(), reverse=True))
         mid = (next(iter(osell)) + next(iter(obuy)))/2
 
-        if len(self.rose_cache) == 250:
+        if len(self.rose_cache) == 300:
             self.rose_cache.pop(0)
             self.rose_cache.append(mid)
-            self.rose_ma1 = sum(self.rose_cache)/250
+            self.rose_ma1 = sum(self.rose_cache)/300
             self.rose_ma2 = sum(self.rose_cache[-100:])/100
         else:
             self.rose_cache.append(mid)
