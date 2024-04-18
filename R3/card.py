@@ -119,10 +119,62 @@ class Trader:
     std_threshold = 55
     orders = {}
     bt, st = -1, -1
+    choc_cache = []
+    choc_ma1 = 0
+    choc_ma2 = 0
+    straw_cache = []
+    straw_ma1 = 0
+    straw_ma2 = 0
+    rose_cache = []
+    rose_ma1 = 0
+    rose_ma2 = 0
+    buys, sells = [], []
+
+    def update_choc(self, state):
+        depth = state.order_depths['CHOCOLATE']
+        osell = collections.OrderedDict(sorted(depth.sell_orders.items()))
+        obuy = collections.OrderedDict(sorted(depth.buy_orders.items(), reverse=True))
+        mid = (next(iter(osell)) + next(iter(obuy)))/2
+
+        if len(self.choc_cache) == 1000:
+            self.choc_cache.pop(0)
+            self.choc_cache.append(mid)
+            self.choc_ma1 = sum(self.choc_cache)/1000
+            self.choc_ma2 = sum(self.choc_cache[-300:])/300
+        else:
+            self.choc_cache.append(mid)
+
+    def update_straw(self, state):
+        depth = state.order_depths['STRAWBERRIES']
+        osell = collections.OrderedDict(sorted(depth.sell_orders.items()))
+        obuy = collections.OrderedDict(sorted(depth.buy_orders.items(), reverse=True))
+        mid = (next(iter(osell)) + next(iter(obuy)))/2
+
+        if len(self.straw_cache) == 1000:
+            self.straw_cache.pop(0)
+            self.straw_cache.append(mid)
+            self.straw_ma1 = sum(self.straw_cache)/1000
+            self.straw_ma2 = sum(self.straw_cache[-100:])/100
+        else:
+            self.straw_cache.append(mid)
+
+    def update_rose(self, state):
+        depth = state.order_depths['ROSES']
+        osell = collections.OrderedDict(sorted(depth.sell_orders.items()))
+        obuy = collections.OrderedDict(sorted(depth.buy_orders.items(), reverse=True))
+        mid = (next(iter(osell)) + next(iter(obuy)))/2
+
+        if len(self.rose_cache) == 250:
+            self.rose_cache.pop(0)
+            self.rose_cache.append(mid)
+            self.rose_ma1 = sum(self.rose_cache)/250
+            self.rose_ma2 = sum(self.rose_cache[-100:])/100
+        else:
+            self.rose_cache.append(mid)
+
+
 
     def compute_orders_basket(self, state):
-
-        delay_threshold = 0
 
         order_depth = state.order_depths
         orders = {'STRAWBERRIES' : [], 'CHOCOLATE': [], 'ROSES' : [], 'GIFT_BASKET' : []}
@@ -146,18 +198,39 @@ class Trader:
 
         trade_at = self.std_threshold
 
+        if self.choc_ma1 != 0:
+            if self.choc_ma2 < self.choc_ma1 - 3:
+                vol = state.position.get('CHOCOLATE', 0) + self.POSITION_LIMIT['CHOCOLATE']
+                orders['CHOCOLATE'].append(Order('CHOCOLATE', worst_buy['CHOCOLATE'], -vol))
+            
+            elif self.choc_ma2 > self.choc_ma1 + 3:
+                vol = self.POSITION_LIMIT['CHOCOLATE'] - state.position.get('CHOCOLATE', 0)
+                orders['CHOCOLATE'].append(Order('CHOCOLATE', worst_sell['CHOCOLATE'], vol))
+
+        if self.straw_ma1 != 0:
+            if self.straw_ma2 < self.straw_ma1 - 2:
+                vol = state.position.get('STRAWBERRIES', 0) + self.POSITION_LIMIT['STRAWBERRIES']
+                orders['STRAWBERRIES'].append(Order('STRAWBERRIES', worst_buy['STRAWBERRIES'], -vol))
+            
+            elif self.straw_ma2 > self.straw_ma1 + 2:
+                vol = self.POSITION_LIMIT['STRAWBERRIES'] - state.position.get('STRAWBERRIES', 0)
+                orders['STRAWBERRIES'].append(Order('STRAWBERRIES', worst_sell['STRAWBERRIES'], vol))
+
+        if self.rose_ma1 != 0:
+            if self.rose_ma2 < self.rose_ma1 - 4:
+                vol = state.position.get('ROSES', 0) + self.POSITION_LIMIT['ROSES']
+                orders['ROSES'].append(Order('ROSES', worst_buy['ROSES'], -vol))
+            
+            elif self.rose_ma2 > self.rose_ma1 + 4:
+                vol = self.POSITION_LIMIT['ROSES'] - state.position.get('ROSES', 0)
+                orders['ROSES'].append(Order('ROSES', worst_sell['ROSES'], vol))
+
 
         if res_sell > trade_at:
             vol = state.position.get('GIFT_BASKET', 0) + self.POSITION_LIMIT['GIFT_BASKET']
             orders['GIFT_BASKET'].append(Order('GIFT_BASKET', worst_buy['GIFT_BASKET'], -vol)) 
             # vol = state.position.get('CHOCOLATE', 0) + self.POSITION_LIMIT['CHOCOLATE']
             # orders['CHOCOLATE'].append(Order('CHOCOLATE', worst_buy['CHOCOLATE'], -vol))
-            self.st = state.timestamp + delay_threshold * 100
-        
-        if state.timestamp == self.st:
-            for prod in ['STRAWBERRIES', 'CHOCOLATE', 'ROSES']:
-                vol = self.POSITION_LIMIT[prod] + state.position.get(prod, 0)
-                orders[prod].append(Order(prod, worst_buy[prod], -vol))
             
         
         elif res_buy < -trade_at:
@@ -165,12 +238,6 @@ class Trader:
             orders['GIFT_BASKET'].append(Order('GIFT_BASKET', worst_sell['GIFT_BASKET'], vol))
             # vol = self.POSITION_LIMIT['CHOCOLATE'] - state.position.get('CHOCOLATE', 0)
             # orders['CHOCOLATE'].append(Order('CHOCOLATE', worst_sell['CHOCOLATE'], vol))
-            self.bt = state.timestamp + delay_threshold * 100
-            
-        if state.timestamp == self.bt: 
-            for prod in ['STRAWBERRIES', 'CHOCOLATE', 'ROSES']:
-                vol = state.position.get(prod, 0) - self.POSITION_LIMIT[prod]
-                orders[prod].append(Order(prod, worst_sell[prod], -vol))
 
         self.orders = orders
     
@@ -178,8 +245,14 @@ class Trader:
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         conversions = 0
         trader_data = ""
-
+        
+        self.update_choc(state)
+        self.update_straw(state)
+        self.update_rose(state)
         self.compute_orders_basket(state)
+
+        logger.print(self.buys)
+        logger.print(self.sells)
 
         orders = self.orders
         logger.flush(state, orders, conversions, trader_data)
