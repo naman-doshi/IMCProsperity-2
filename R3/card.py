@@ -154,7 +154,7 @@ class Trader:
             self.straw_cache.pop(0)
             self.straw_cache.append(mid)
             self.straw_ma1 = sum(self.straw_cache)/1000
-            self.straw_ma2 = sum(self.straw_cache[-100:])/100
+            self.straw_ma2 = sum(self.straw_cache[-90:])/90
         else:
             self.straw_cache.append(mid)
 
@@ -217,14 +217,13 @@ class Trader:
                 orders['STRAWBERRIES'].append(Order('STRAWBERRIES', worst_sell['STRAWBERRIES'], vol))
 
         if self.rose_ma1 != 0:
-            if self.rose_ma2 < self.rose_ma1 - 4:
+            if self.rose_ma2 < self.rose_ma1 - 3:
                 vol = state.position.get('ROSES', 0) + self.POSITION_LIMIT['ROSES']
                 orders['ROSES'].append(Order('ROSES', worst_buy['ROSES'], -vol))
             
-            elif self.rose_ma2 > self.rose_ma1 + 4:
+            elif self.rose_ma2 > self.rose_ma1 + 3:
                 vol = self.POSITION_LIMIT['ROSES'] - state.position.get('ROSES', 0)
                 orders['ROSES'].append(Order('ROSES', worst_sell['ROSES'], vol))
-
 
         if res_sell > trade_at:
             vol = state.position.get('GIFT_BASKET', 0) + self.POSITION_LIMIT['GIFT_BASKET']
