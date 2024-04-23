@@ -345,10 +345,14 @@ class Trader:
         if self.buyingRoses == 1:
             vol = self.POSITION_LIMIT['ROSES'] - state.position.get('ROSES', 0)
             orders['ROSES'].append(Order('ROSES', worst_sell['ROSES'], vol))
+            vol = self.POSITION_LIMIT['CHOCOLATE'] - state.position.get('CHOCOLATE', 0)
+            orders['CHOCOLATE'].append(Order('CHOCOLATE', worst_sell['CHOCOLATE'], vol))
 
         if self.buyingRoses == -1:
             vol = self.POSITION_LIMIT['ROSES'] - state.position.get('ROSES', 0)
             orders['ROSES'].append(Order('ROSES', worst_buy['ROSES'], -vol))
+            vol = self.POSITION_LIMIT['CHOCOLATE'] - state.position.get('CHOCOLATE', 0)
+            orders['CHOCOLATE'].append(Order('CHOCOLATE', worst_buy['CHOCOLATE'], -vol))
 
         for product in prods:
             self.curOrders[product] = orders[product]
@@ -408,11 +412,11 @@ class Trader:
             mid_price[p] = (best_sell[p] + best_buy[p])/2
 
         price = mid_price["COCONUT_COUPON"]
-        theo = self.black_scholes(3 + state.timestamp / 1000000, self.coconut_price(state))
+        theo = self.black_scholes(4 + state.timestamp / 1000000, self.coconut_price(state))
         dx = theo - price - self.mean
         dx /= self.sd
         
-        delta = self.calculate_delta(3 + state.timestamp / 1000000, self.coconut_price(state))
+        delta = self.calculate_delta(4 + state.timestamp / 1000000, self.coconut_price(state))
         logger.print("delta: ", delta)
         if dx > 1:
             coup_pos = state.position.get("COCONUT_COUPON", 0)
