@@ -458,17 +458,11 @@ class Trader:
 
         self.compute_orders_regression(state, 'AMETHYSTS', 9999, 10001, 20)
         self.starfruitMM(state)
-        #self.updateOrchidCache(state)
-        #conversions = self.orchidArbitrage('ORCHIDS', state)
+        self.updateOrchidCache(state)
+        conversions = self.orchidArbitrage('ORCHIDS', state)
         self.process_rhianna(state)
         self.compute_orders_basket(state)
         self.coconut_strategy(state)
-
-        own = state.own_trades
-        for prod, trades in own.items():
-            logger.print(prod)
-            for trade in trades:
-                logger.print(trade.price, trade.quantity, trade.buyer, trade.seller)
 
         orders = self.curOrders
         trader_data = json.dumps({
