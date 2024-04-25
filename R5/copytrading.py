@@ -3,8 +3,10 @@ from datamodel import Listing, Observation, Order, OrderDepth, ProsperityEncoder
 from typing import Any
 import collections
 import pandas as pd
-import numpy as np
 import math
+import copy
+
+empty_dict = {'STRAWBERRIES': 0, 'CHOCOLATE': 0, 'ROSES': 0, 'GIFT_BASKET': 0}
 
 class Logger:
     def __init__(self) -> None:
@@ -111,122 +113,64 @@ class Logger:
 
 logger = Logger()
 
+empty = {'CHOCOLATE': []}
+
 class Trader:
 
-    mean = 3
-    sd = 8.3
-    curOrders = {}
-    POSITION_LIMIT = {"COCONUT_COUPON": 600, "COCONUT": 300}
-    coup_amt = 0
-    coco_amt = 0
+    POSITION_LIMIT = {'AMETHYSTS': 20, 'STARFRUIT': 20, 'ORCHIDS': 100, 'CHOCOLATE':250, 'STRAWBERRIES':350, 'ROSES':60, 'GIFT_BASKET':60}
+    desiredPosition = 0
+    product = 'CHOCOLATE'
+    trader = 'Vinnie'
+    orders = {}
 
-    def calculate_delta(self, day, S):
-        K = 10000
-        T = (250-day)/252
-        sigma = 0.1619401
-        # Calculate d1
-        d1 = (np.log(S / K) + (0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
-        
-        # Calculate delta using the CDF of the standard normal distribution
-        delta = self.norm_cdf(d1)
-        
-        return delta
-
-    def norm_cdf(self, x) -> float:
-        return 0.5 * (1 + math.erf(x / math.sqrt(2)))
-
-    def black_scholes(self, day, S: float):
-        K = 10000
-        T = (250-day)/252
-        sigma = 0.1619401
-        # Compute d1 and d2
-        d1 = (np.log(S / K) + (0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
-        d2 = d1 - sigma * np.sqrt(T)
-        call_price = S * self.norm_cdf(d1) - K * self.norm_cdf(d2)
-        return call_price
+    def process_trader(self, state):
+        market_trades = state.market_trades
+        if self.product not in market_trades:
+            return
+        for trade in market_trades[self.product]:
+            if trade.buyer == self.trader:
+                self.desiredPosition += trade.quantity
+            elif trade.seller == self.trader:
+                self.desiredPosition -= trade.quantity
     
-    def coconut_price(self, state):
-        depth = state.order_depths["COCONUT"]
-        buy = max(list(depth.buy_orders.keys()))
-        sell = min(list(depth.sell_orders.keys()))
-        if (buy == 0 or sell == 0):
-            return 0
-        return (buy + sell) / 2
-    
-    def coconut_strategy(self, state: TradingState):
-        orders = []
+    def compute_orders(self, state):
+
+        orders = copy.deepcopy(empty)
+
         order_depth = state.order_depths
-        orders = {'COCONUT_COUPON': [], 'COCONUT': []}
-        prods = ["COCONUT_COUPON", "COCONUT"]
         osell, obuy, best_sell, best_buy, worst_sell, worst_buy, mid_price = {}, {}, {}, {}, {}, {}, {}
 
-        for p in prods:
+        for p in [self.product]:
             osell[p] = collections.OrderedDict(sorted(order_depth[p].sell_orders.items()))
             obuy[p] = collections.OrderedDict(sorted(order_depth[p].buy_orders.items(), reverse=True))
-
-            if (len(osell[p]) == 0 or len(obuy[p]) == 0):
-                return
 
             best_sell[p] = next(iter(osell[p]))
             best_buy[p] = next(iter(obuy[p]))
 
             worst_sell[p] = next(reversed(osell[p]))
             worst_buy[p] = next(reversed(obuy[p]))
+
             mid_price[p] = (best_sell[p] + best_buy[p])/2
 
-        price = mid_price["COCONUT_COUPON"]
-        theo = self.black_scholes(4 + state.timestamp / 1000000, self.coconut_price(state))
-        dx = theo - price - self.mean
-        dx /= self.sd
-        
-        delta = self.calculate_delta(4 + state.timestamp / 1000000, self.coconut_price(state))
-        logger.print("delta: ", delta)
-        logger.print("dx: ", dx)
-        coup_pos = state.position.get("COCONUT_COUPON", 0)
-        coco_pos = state.position.get("COCONUT", 0)
-        
-        if dx > 1:
-            if delta >= 0.5:
-                # coco position maximised
-                self.coup_amt = int(300 / delta)
-                self.coco_amt = -300
-            else:
-                # coup position maximised
-                self.coco_amt = -int(600 * delta)
-                self.coup_amt = 600
+        pos = state.position.get(self.product, 0)
 
-        elif dx < -1:
-            if delta >= 0.5:
-                # coco position maximised
-                self.coup_amt = -int(300 / delta)
-                self.coco_amt = 300
-            else:
-                # coup position maximised
-                self.coco_amt = int(600 * delta)
-                self.coup_amt = -600
+        if pos > self.desiredPosition:
+            vol = self.desiredPosition - pos
+            orders[self.product].append(Order(self.product, best_buy[self.product], vol))
 
-        vol = self.coup_amt - state.position.get("COCONUT_COUPON", 0)
-        if vol > 0:
-            orders["COCONUT_COUPON"].append(Order("COCONUT_COUPON", worst_sell["COCONUT_COUPON"], vol))
-        elif vol < 0:
-            orders["COCONUT_COUPON"].append(Order("COCONUT_COUPON", worst_buy["COCONUT_COUPON"], vol))
-        
-        # vol = self.coco_amt - state.position.get("COCONUT", 0)
-        # if vol > 0:
-        #     orders["COCONUT"].append(Order("COCONUT", best_sell["COCONUT"], vol))
-        # elif vol < 0:
-        #     orders["COCONUT"].append(Order("COCONUT", best_buy["COCONUT"], vol))
+        if pos < self.desiredPosition:
+            vol = self.desiredPosition - pos
+            orders[self.product].append(Order(self.product, best_sell[self.product], vol))
 
-        
-        self.curOrders = orders
-  
+        self.orders = orders
 
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
-        orders = {}
         conversions = 0
         trader_data = ""
-        self.coconut_strategy(state)
-        orders = self.curOrders
-    
+        self.process_trader(state)
+        self.compute_orders(state)
+        
+
+        orders = self.orders
         logger.flush(state, orders, conversions, trader_data)
         return orders, conversions, trader_data

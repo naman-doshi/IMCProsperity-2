@@ -122,9 +122,9 @@ logger = Logger()
 
 class Trader:
 
-    POSITION_LIMIT = {'AMETHYSTS': 20, 'STARFRUIT': 20, 'ORCHIDS': 100, 'CHOCOLATE': 240, 'STRAWBERRIES':300, 'ROSES':60, 'GIFT_BASKET':60, "COCONUT_COUPON": 600, "COCONUT": 300}
+    POSITION_LIMIT = {'AMETHYSTS': 20, 'STARFRUIT': 20, 'ORCHIDS': 100, 'CHOCOLATE': 250, 'STRAWBERRIES':300, 'ROSES':60, 'GIFT_BASKET':60, "COCONUT_COUPON": 600, "COCONUT": 300}
     mean = 3
-    sd = 8
+    sd = 8.3
     std_threshold = 55
     starfruit_dim = 4
     curOrders = {}
@@ -133,6 +133,8 @@ class Trader:
     orchid_ma_differential = 0
     INF = 1e9
     buyingRoses = 0
+    coco_amt = 0
+    coup_amt = 0
 
     def process_rhianna(self, state):
         market_trades = state.market_trades
@@ -330,17 +332,10 @@ class Trader:
         if res_sell > trade_at:
             vol = state.position.get('GIFT_BASKET', 0) + self.POSITION_LIMIT['GIFT_BASKET']
             orders['GIFT_BASKET'].append(Order('GIFT_BASKET', worst_buy['GIFT_BASKET'], -vol)) 
-            # for product in ['STRAWBERRIES', 'CHOCOLATE', 'ROSES']:
-            #     vol = self.POSITION_LIMIT[product] - state.position.get(product, 0)
-            #     orders[product].append(Order(product, worst_sell[product], vol))
-            
-        
+           
         elif res_buy < -trade_at:
             vol = self.POSITION_LIMIT['GIFT_BASKET'] - state.position.get('GIFT_BASKET', 0)
             orders['GIFT_BASKET'].append(Order('GIFT_BASKET', worst_sell['GIFT_BASKET'], vol))
-            # for product in ['STRAWBERRIES', 'CHOCOLATE', 'ROSES']:
-            #     vol = state.position.get(product, 0) + self.POSITION_LIMIT[product]
-            #     orders[product].append(Order(product, worst_buy[product], -vol))
 
         if self.buyingRoses == 1:
             vol = self.POSITION_LIMIT['ROSES'] - state.position.get('ROSES', 0)
@@ -349,9 +344,9 @@ class Trader:
             orders['CHOCOLATE'].append(Order('CHOCOLATE', worst_sell['CHOCOLATE'], vol))
 
         if self.buyingRoses == -1:
-            vol = self.POSITION_LIMIT['ROSES'] - state.position.get('ROSES', 0)
+            vol = self.POSITION_LIMIT['ROSES'] + state.position.get('ROSES', 0)
             orders['ROSES'].append(Order('ROSES', worst_buy['ROSES'], -vol))
-            vol = self.POSITION_LIMIT['CHOCOLATE'] - state.position.get('CHOCOLATE', 0)
+            vol = self.POSITION_LIMIT['CHOCOLATE'] + state.position.get('CHOCOLATE', 0)
             orders['CHOCOLATE'].append(Order('CHOCOLATE', worst_buy['CHOCOLATE'], -vol))
 
         for product in prods:
@@ -360,7 +355,7 @@ class Trader:
     def calculate_delta(self, day, S):
         K = 10000
         T = (250-day)/252
-        sigma = 0.161615
+        sigma = 0.1619401
         # Calculate d1
         d1 = (np.log(S / K) + (0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
         
@@ -375,7 +370,7 @@ class Trader:
     def black_scholes(self, day, S: float):
         K = 10000
         T = (250-day)/252
-        sigma = 0.161615
+        sigma = 0.1619401
         # Compute d1 and d2
         d1 = (np.log(S / K) + (0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
         d2 = d1 - sigma * np.sqrt(T)
@@ -418,41 +413,33 @@ class Trader:
         
         delta = self.calculate_delta(4 + state.timestamp / 1000000, self.coconut_price(state))
         logger.print("delta: ", delta)
+        logger.print("dx: ", dx)
+        
         if dx > 1:
-            coup_pos = state.position.get("COCONUT_COUPON", 0)
-            coup_qty = self.POSITION_LIMIT['COCONUT_COUPON'] - coup_pos
-            coco_pos = state.position.get("COCONUT", 0)
-            coco_qty = - self.POSITION_LIMIT['COCONUT'] - coco_pos
-            
             if delta >= 0.5:
                 # coco position maximised
-                coup_lim = int(300 / delta)
-                orders['COCONUT_COUPON'].append(Order("COCONUT_COUPON", worst_sell['COCONUT_COUPON'], coup_lim - coup_pos))
-                orders['COCONUT'].append(Order("COCONUT", worst_buy['COCONUT'], coco_qty))
+                self.coup_amt = int(300 / delta)
+                self.coco_amt = -300
             else:
                 # coup position maximised
-                coco_lim = int(600 * delta)
-                orders['COCONUT_COUPON'].append(Order("COCONUT_COUPON", worst_sell['COCONUT_COUPON'], coup_qty))
-                orders['COCONUT'].append(Order("COCONUT", worst_buy['COCONUT'], -coco_lim - coco_pos))
-
+                self.coco_amt = -int(600 * delta)
+                self.coup_amt = 600
 
         elif dx < -1:
-            coup_pos = state.position.get("COCONUT_COUPON", 0)
-            coup_qty = -self.POSITION_LIMIT['COCONUT_COUPON'] - coup_pos
-            coco_pos = state.position.get("COCONUT", 0)
-            coco_qty = self.POSITION_LIMIT['COCONUT'] - coco_pos
-
             if delta >= 0.5:
                 # coco position maximised
-                coup_lim = int(300 / delta)
-                logger.print("coup_qty: ", coup_qty)
-                orders['COCONUT_COUPON'].append(Order("COCONUT_COUPON", worst_buy['COCONUT_COUPON'], -coup_lim - coup_pos))
-                orders['COCONUT'].append(Order("COCONUT", worst_sell['COCONUT'], coco_qty))
+                self.coup_amt = -int(300 / delta)
+                self.coco_amt = 300
             else:
                 # coup position maximised
-                coco_lim = int(600 * delta)
-                orders['COCONUT_COUPON'].append(Order("COCONUT_COUPON", worst_buy['COCONUT_COUPON'], coup_qty))
-                orders['COCONUT'].append(Order("COCONUT", worst_sell['COCONUT'], coco_lim - coco_pos))
+                self.coco_amt = int(600 * delta)
+                self.coup_amt = -600
+
+        vol = self.coup_amt - state.position.get("COCONUT_COUPON", 0)
+        if vol > 0:
+            orders["COCONUT_COUPON"].append(Order("COCONUT_COUPON", worst_sell["COCONUT_COUPON"], vol))
+        elif vol < 0:
+            orders["COCONUT_COUPON"].append(Order("COCONUT_COUPON", worst_buy["COCONUT_COUPON"], vol))
         
         for product in prods:
             self.curOrders[product] = orders[product]
@@ -466,11 +453,13 @@ class Trader:
             self.starfruit_cache = json.loads(json.loads(state.traderData)["starfruit_cache"])
             self.orchids_cache = json.loads(json.loads(state.traderData)["orchids_cache"])
             self.buyingRoses = json.loads(json.loads(state.traderData)["buying_roses"])
+            self.coco_amt = json.loads(json.loads(state.traderData)["coco_amt"])
+            self.coup_amt = json.loads(json.loads(state.traderData)["coup_amt"])
 
         self.compute_orders_regression(state, 'AMETHYSTS', 9999, 10001, 20)
         self.starfruitMM(state)
-        self.updateOrchidCache(state)
-        conversions = self.orchidArbitrage('ORCHIDS', state)
+        #self.updateOrchidCache(state)
+        #conversions = self.orchidArbitrage('ORCHIDS', state)
         self.process_rhianna(state)
         self.compute_orders_basket(state)
         self.coconut_strategy(state)
@@ -485,7 +474,9 @@ class Trader:
         trader_data = json.dumps({
             "starfruit_cache": json.dumps(self.starfruit_cache),
             "orchids_cache": json.dumps(self.orchids_cache),
-            "buying_roses": json.dumps(self.buyingRoses)
+            "buying_roses": json.dumps(self.buyingRoses),
+            "coco_amt": json.dumps(self.coco_amt),
+            "coup_amt": json.dumps(self.coup_amt)
         })
     
         logger.flush(state, orders, conversions, trader_data)

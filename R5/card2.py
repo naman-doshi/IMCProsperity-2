@@ -115,10 +115,12 @@ logger = Logger()
 
 class Trader:
 
-    POSITION_LIMIT = {'AMETHYSTS': 20, 'STARFRUIT': 20, 'ORCHIDS': 100, 'CHOCOLATE':250, 'STRAWBERRIES':300, 'ROSES':60, 'GIFT_BASKET':60}
+    POSITION_LIMIT = {'AMETHYSTS': 20, 'STARFRUIT': 20, 'ORCHIDS': 100, 'CHOCOLATE':250, 'STRAWBERRIES':350, 'ROSES':60, 'GIFT_BASKET':60}
     std_threshold = 55
     orders = {}
     buyingRoses = 0
+    bb = 0
+    bs = 0
 
     def process_rhianna(self, state):
         market_trades = state.market_trades
@@ -129,7 +131,7 @@ class Trader:
                 self.buyingRoses = 1
             elif trade.seller == 'Rhianna':
                 self.buyingRoses = -1
-    
+                
     def compute_orders_basket(self, state):
 
         order_depth = state.order_depths
@@ -171,15 +173,15 @@ class Trader:
 
         if self.buyingRoses == 1:
             vol = self.POSITION_LIMIT['ROSES'] - state.position.get('ROSES', 0)
-            orders['ROSES'].append(Order('ROSES', worst_sell['ROSES'], vol))
+            orders['ROSES'].append(Order('ROSES', best_sell['ROSES'], vol))
             vol = self.POSITION_LIMIT['CHOCOLATE'] - state.position.get('CHOCOLATE', 0)
-            orders['CHOCOLATE'].append(Order('CHOCOLATE', worst_sell['CHOCOLATE'], vol))
+            orders['CHOCOLATE'].append(Order('CHOCOLATE', best_sell['CHOCOLATE'], vol))
 
         if self.buyingRoses == -1:
-            vol = self.POSITION_LIMIT['ROSES'] - state.position.get('ROSES', 0)
-            orders['ROSES'].append(Order('ROSES', worst_buy['ROSES'], -vol))
-            vol = self.POSITION_LIMIT['CHOCOLATE'] - state.position.get('CHOCOLATE', 0)
-            orders['CHOCOLATE'].append(Order('CHOCOLATE', worst_buy['CHOCOLATE'], -vol))
+            vol = self.POSITION_LIMIT['ROSES'] + state.position.get('ROSES', 0)
+            orders['ROSES'].append(Order('ROSES', best_buy['ROSES'], -vol))
+            vol = self.POSITION_LIMIT['CHOCOLATE'] + state.position.get('CHOCOLATE', 0)
+            orders['CHOCOLATE'].append(Order('CHOCOLATE', best_buy['CHOCOLATE'], -vol))
 
         self.orders = orders
 
